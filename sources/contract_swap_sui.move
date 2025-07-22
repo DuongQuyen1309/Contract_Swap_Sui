@@ -19,16 +19,21 @@ use std::string::{Self, String};
 use std::ascii::into_bytes;
 use std::type_name::{get, into_string};
 use std::string::append_utf8;
-
+use sui::transfer::share_object;
+use sui::event;
+use std::address;
 
 //TODO: NOTICE TO OWNERSHIP OF ASSET
-
 const ERROR_NOT_POSITIVE_AMOUNT: u64 = 0;
+const ERROR_POOL_NOT_EXIST: u64 = 1;
+const ERROR_NOT_ENOUGH_BALANCE: u64 = 2;
+const ERROR_NOT_SUITABLE_FEE: u64 = 3;
 
 //create Global variable to store pools (pair of fromToken and toToken)
 public struct Global has key {
     id: UID,
     pools: Bag,
+    fee: u64,
 }
 
 //pool store infor of pair (fromToken, toToken)
@@ -40,15 +45,33 @@ public struct Pool<phantom X, phantom Y> has key {
     denominator_of_rate: u64,
 }
 
+public struct SwapEvent has copy, drop {
+    sender_address: address,
+    from_token: String,
+    to_token: String,
+    amount_from: u64,
+    amount_to: u64,
+}
+
+public struct AdminCap has key, store {
+    id: UID,
+}
 fun init(ctx: &mut TxContext) {
+    let admin = AdminCap {
+        id: object::new(ctx),
+    };
     let global = Global {
         id: object::new(ctx),
         pools: bag::new(ctx), 
+        fee: 1, //0.1%
     };
-    transfer::share_object(global);
+    transfer::share_object(global); // TODO: authorize again
+    transfer::transfer(admin, tx_context::sender(ctx));
 }
 
-fun add_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {   
+fun add_pool<X,Y>(admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {   
+    // check numerator and denominator are positive
+    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
     let pool_name_XY = create_pool_name<X, Y>();
     let pool_name_YX = create_pool_name<Y, X>();
 
@@ -68,8 +91,23 @@ fun add_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx: &m
         denominator_of_rate: numerator,
     };
 
-    bag::add(&mut global.pools, pool_name_XY, pool);
-    bag::add(&mut global.pools, pool_name_YX, pool);
+    bag::add(&mut global.pools, pool_name_XY, pool_XY);
+    bag::add(&mut global.pools, pool_name_YX, pool_YX);
+}
+
+fun reset_rate_pool<X,Y>(admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {
+    // check numerator and denominator are positive
+    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
+    let pool_name = create_pool_name<X, Y>();
+    let pool = get_pool<X, Y>(global);
+    pool.numerator_of_rate = numerator;
+    pool.denominator_of_rate = denominator;
+}
+
+fun set_fee(admin: &AdminCap, global: &mut Global, fee:64) {
+    // check fee is positive
+    assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
+    global.fee = fee;
 }
 
 //create key(name) for bag
@@ -81,37 +119,53 @@ fun create_pool_name<X, Y>() : String {
     name
 }
 
-//TODO: NOTICE check exist of pool
 fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
     let pool_name = create_pool_name<X, Y>();
-    bag::borow<String, Pool<X, Y>>(&mut global.pools, pool_name);
+    assert!(bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
+    bag::borow_mut<String, Pool<X, Y>>(&mut global.pools, pool_name);
 }
 
 fun swap_token<X,Y>(global: &mut Global, amount: Coin<X>, ctx: &mut TxContext) {
     let from_token_amount = coin::value(&amount);
+
     // check amount > 0
     assert!(from_token_amount > 0, ERROR_NOT_POSITIVE_AMOUNT);
-    //check pool exist
-    let pool_name = create_pool_name<X, Y>(); // TODO : notice ownership of asset
-    assert!(bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), 1);
-
+    let pool_name = create_pool_name<X, Y>();
     let pool = get_pool<X, Y>(global);
-    handle_amount_from<X, Y>(global, amount, ctx);
-    let amount_to = calculate_amount_to(pool, from_token_amount);
-    handle_amount_to<X, Y>(global, amount_to, ctx);
+    let fee = global.fee;
 
-    
+    //calculate amount of toToken received
+    let amount_to = calculate_amount_to(&pool, from_token_amount, fee);
+
+    //check balance of toToken is enough
+    assert!(balance::value(&pool.to_token) >= amount_to, ERROR_NOT_ENOUGH_BALANCE);
+
+    //handle amount of fromToken 
+    handle_amount_from<X, Y>(&mut global, amount, ctx);
+
+    //handle amount of toToken
+    handle_amount_to<X, Y>(&mut global, amount_to, ctx); 
+
+    event::emit(SwapEvent {
+        sender_address: tx_context::sender(ctx),
+        from_token: into_string(get<X>()),
+        to_token: into_string(get<Y>()),
+        amount_from: from_token_amount,
+        amount_to: amount_to,
+    });
 }
-//TODO:notice ownership of asset
+
 fun handle_amount_from<X, Y>(global: &mut Global, from_token: Coin<X>, ctx: &mut TxContext) {
     let from_token_balance = coin::into_balance(from_token);
     balance::join(&mut get_pool<X, Y>(global).from_token, from_token_balance);
 }
+
 fun handle_amount_to<X, Y>(global: &mut Global, amount: u64, ctx: &mut TxContext) {
-    let amount_to_Coin = coin::take<X>(&mut global.to_token, amount, ctx); //TODO: notive mut of asset
-    transfer::transfer(amount_to_Coin, tx_context::sender(ctx)); // transfer to sender
+    let amount_to_Coin = coin::take<X>(&mut get_pool<X, Y>(global).to_token, amount, ctx);
+    transfer::transfer(amount_to_Coin, tx_context::sender(ctx)); 
 }
-fun calculate_amount_to<X, Y>(pool: &mut Pool<X, Y>, amount: u64) : u64 {
+
+fun calculate_amount_to<X, Y>(pool: &Pool<X, Y>, amount: u64, fee: u64) : u64 {
     let amount_not_fee = amount * pool.numerator_of_rate / pool.denominator_of_rate;
-    amount_not_fee * (1000 - pool.fee) / 1000 // TODO: notice fee
+    amount_not_fee * (1000 - fee) / 1000 
 }
