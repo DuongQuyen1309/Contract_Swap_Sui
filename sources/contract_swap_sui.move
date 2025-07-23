@@ -23,6 +23,10 @@ use sui::transfer::share_object;
 use sui::event;
 use std::address;
 
+
+//assert!(ctx.sender() == object::owner(admin), E_NOT_OWNER); nên thêm vào nhwunxg trường nhạy cảm
+
+
 //TODO: NOTICE TO OWNERSHIP OF ASSET
 const ERROR_NOT_POSITIVE_AMOUNT: u64 = 0;
 const ERROR_POOL_NOT_EXIST: u64 = 1;
@@ -104,7 +108,7 @@ fun reset_rate_pool<X,Y>(admin: &AdminCap, global: &mut Global, numerator: u64, 
     pool.denominator_of_rate = denominator;
 }
 
-fun set_fee(admin: &AdminCap, global: &mut Global, fee:64) {
+fun set_fee(admin: &AdminCap, global: &mut Global, fee: u64) {
     // check fee is positive
     assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
     global.fee = fee;
@@ -168,4 +172,9 @@ fun handle_amount_to<X, Y>(global: &mut Global, amount: u64, ctx: &mut TxContext
 fun calculate_amount_to<X, Y>(pool: &Pool<X, Y>, amount: u64, fee: u64) : u64 {
     let amount_not_fee = amount * pool.numerator_of_rate / pool.denominator_of_rate;
     amount_not_fee * (1000 - fee) / 1000 
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
 }
