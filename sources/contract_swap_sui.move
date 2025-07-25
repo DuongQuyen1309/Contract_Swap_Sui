@@ -16,6 +16,7 @@ use std::type_name::{get, into_string};
 use sui::event;
 
 
+
 //assert!(ctx.sender() == object::owner(admin), E_NOT_OWNER); nên thêm vào nhwunxg trường nhạy cảm
 
 
@@ -61,72 +62,18 @@ fun init(ctx: &mut TxContext) {
         pools: bag::new(ctx), 
         fee: 1, //0.1%
     };
-    transfer::share_object(global); // TODO: authorize again
+    transfer::share_object(global);
     transfer::transfer(admin, tx_context::sender(ctx));
 }
 
-public entry fun add_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {   
-
-    //TODO: check pool exist
-
-
-
-
-    
-    // check numerator and denominator are positive
-    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
-    let pool_name = create_pool_name<X, Y>();
-
-    let pool = Pool<X, Y> {
-        id: object::new(ctx),
-        from_token: balance::zero<X>(), // TODO: can mint amount
-        to_token: balance::zero<Y>(),   // TODO: can mint amount
-        numerator_of_rate: numerator,
-        denominator_of_rate: denominator,
-    };
-    bag::add(&mut global.pools, pool_name, pool);
-}
-
-public entry fun reset_rate_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64) {
-    // check numerator and denominator are positive
-    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
-    let pool = get_pool<X, Y>(global);
-    pool.numerator_of_rate = numerator;
-    pool.denominator_of_rate = denominator;
-}
-
-public fun set_fee(_admin: &AdminCap, global: &mut Global, fee: u64) {
-    // check fee is positive
-    assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
-    global.fee = fee;
-}
-
-//create key(name) for bag
-// TODO: remove else
-
-public fun create_pool_name<X, Y>() : String {
-    let result_for_comparing = compare_token_name(into_string(get<X>()), into_string(get<Y>()));
-    let mut name = string::utf8(b""); // TODO: use mut and no mut difference ???
-    if (result_for_comparing == true) {
-        string::append_utf8(&mut name, into_bytes(into_string(get<X>())));
-        string::append_utf8(&mut name, b"_");
-        string::append_utf8(&mut name, into_bytes(into_string(get<Y>())));
-    } else {
-        string::append_utf8(&mut name, into_bytes(into_string(get<Y>())));
-        string::append_utf8(&mut name, b"_");
-        string::append_utf8(&mut name, into_bytes(into_string(get<X>())));
-    };
-    move(name)
-}
-
-
-//TODO: REMOVE ELSE
 public fun compare_token_name(a: std::ascii::String, b: std::ascii::String): bool {
     let a_bytes = into_bytes(a);
     let b_bytes = into_bytes(b);
     let a_len = vector::length(&a_bytes);
     let b_len = vector::length(&b_bytes);
-    let min_len = if (a_len < b_len) { a_len } else { b_len };
+    let mut min_len = 0;
+    if (a_len < b_len) { min_len = a_len };
+    if (a_len >= b_len) { min_len = b_len };
 
     let mut i = 0;
     let mut result = false;
@@ -136,18 +83,44 @@ public fun compare_token_name(a: std::ascii::String, b: std::ascii::String): boo
         if (a_byte < b_byte) {
             result = true;
             break
-        } else if (a_byte > b_byte) {
+        };
+        if (a_byte > b_byte) {
             result = false;
             break
-        } else {
-            i = i + 1;
-            continue
-        }
+        };
+        i = i + 1;
     };
     if (i == min_len) {
         result = a_len < b_len;
     };
     result 
+}
+
+public fun create_pool_name<X, Y>() : String { 
+    let mut name = string::utf8(b"");
+    string::append_utf8(&mut name, into_bytes(into_string(get<X>())));
+    string::append_utf8(&mut name, b"_");
+    string::append_utf8(&mut name, into_bytes(into_string(get<Y>())));
+    move(name)
+}
+
+public entry fun add_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {   
+    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
+    create_pool<X,Y>(global, numerator, denominator, ctx);
+    create_pool<Y,X>(global, denominator, numerator, ctx);
+}
+
+fun create_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {
+    let pool_name = create_pool_name<X, Y>();
+    assert!(!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
+    let pool = Pool<X, Y> {
+        id: object::new(ctx),
+        from_token: balance::zero<X>(),
+        to_token: balance::zero<Y>(),  
+        numerator_of_rate: numerator,
+        denominator_of_rate: denominator,
+    };
+    bag::add(&mut global.pools, pool_name, pool);
 }
 
 public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
@@ -156,14 +129,11 @@ public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
     bag::borrow_mut<String, Pool<X, Y>>(&mut global.pools, pool_name)
 }
 
-// TODO: check again to calculate amount to receive
 public entry fun swap_token<X,Y>(global: &mut Global, amount: Coin<X>, ctx: &mut TxContext) {
     let from_token_amount = coin::value(&amount);
 
     // check amount > 0
     assert!(from_token_amount > 0, ERROR_NOT_POSITIVE_AMOUNT);
-
-    // let is_ordered = compare_token_name(into_string(get<X>()), into_string(get<Y>())); //check pool
     let fee = global.fee;
 
     //calculate amount of toToken received
@@ -198,8 +168,22 @@ fun handle_amount_to<X, Y>(global: &mut Global, amount: u64, ctx: &mut TxContext
     transfer::public_transfer(amount_to_Coin, tx_context::sender(ctx)); 
 }
 
+public entry fun reset_rate_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64) {
+    // check numerator and denominator are positive
+    assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
+    let pool = get_pool<X, Y>(global);
+    pool.numerator_of_rate = numerator;
+    pool.denominator_of_rate = denominator;
+}
+
+public entry fun set_fee(_admin: &AdminCap, global: &mut Global, fee: u64) {
+    // check fee is positive
+    assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
+    global.fee = fee;
+}
+
 fun calculate_amount_to<X, Y>(pool: &Pool<X, Y>, amount: u64, fee: u64) : u64 {
-    let amount_not_fee = amount * pool.numerator_of_rate / pool.denominator_of_rate;
+    let amount_not_fee = amount * pool.denominator_of_rate / pool.numerator_of_rate;
     amount_not_fee * (1000 - fee) / 1000
 }
 
