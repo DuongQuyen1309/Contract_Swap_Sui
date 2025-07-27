@@ -60,7 +60,7 @@ fun init(ctx: &mut TxContext) {
     let global = Global {
         id: object::new(ctx),
         pools: bag::new(ctx), 
-        fee: 1, //0.1%
+        fee: 10, // equal 10/1000
     };
     transfer::share_object(global);
     transfer::transfer(admin, tx_context::sender(ctx));
@@ -112,15 +112,17 @@ public entry fun add_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator
 
 fun create_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {
     let pool_name = create_pool_name<X, Y>();
-    assert!(!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
-    let pool = Pool<X, Y> {
-        id: object::new(ctx),
-        from_token: balance::zero<X>(),
-        to_token: balance::zero<Y>(),  
-        numerator_of_rate: numerator,
-        denominator_of_rate: denominator,
-    };
-    bag::add(&mut global.pools, pool_name, pool);
+    // assert!(!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
+    if (!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name)) {
+        let pool = Pool<X, Y> {
+            id: object::new(ctx),
+            from_token: balance::zero<X>(),
+            to_token: balance::zero<Y>(),  
+            numerator_of_rate: numerator,
+            denominator_of_rate: denominator,
+        };
+        bag::add(&mut global.pools, pool_name, pool);
+    }
 }
 
 public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
@@ -180,6 +182,15 @@ public entry fun set_fee(_admin: &AdminCap, global: &mut Global, fee: u64) {
     // check fee is positive
     assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
     global.fee = fee;
+}
+
+public entry fun get_fee(global: &mut Global) : u64 {
+    global.fee
+}
+
+public entry fun get_rate_pool<X, Y>(global: &mut Global) : (u64, u64) {
+    let pool = get_pool<X, Y>(global);
+    (pool.numerator_of_rate, pool.denominator_of_rate)
 }
 
 fun calculate_amount_to<X, Y>(pool: &Pool<X, Y>, amount: u64, fee: u64) : u64 {
