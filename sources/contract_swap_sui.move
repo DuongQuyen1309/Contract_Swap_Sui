@@ -92,7 +92,7 @@ fun create_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx:
 public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
     let pool_name = create_pool_name<X, Y>();
     assert!(bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
-    bag::borrow_mut<ascii::String, Pool<X, Y>>(&mut global.pools, pool_name)
+    bag::borrow_mut<String, Pool<X, Y>>(&mut global.pools, pool_name)
 }
 
 public entry fun swap_token<X,Y>(global: &mut Global, amount: Coin<X>, ctx: &mut TxContext) {
