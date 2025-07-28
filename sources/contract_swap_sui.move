@@ -15,12 +15,6 @@ use std::ascii::into_bytes;
 use std::type_name::{get, into_string};
 use sui::event;
 
-
-
-//assert!(ctx.sender() == object::owner(admin), E_NOT_OWNER); nên thêm vào nhwunxg trường nhạy cảm
-
-
-//TODO: NOTICE TO OWNERSHIP OF ASSET
 const ERROR_NOT_POSITIVE_AMOUNT: u64 = 0;
 const ERROR_POOL_NOT_EXIST: u64 = 1;
 const ERROR_NOT_ENOUGH_BALANCE: u64 = 2;
@@ -42,6 +36,7 @@ public struct Pool<phantom X, phantom Y> has key, store {
     denominator_of_rate: u64,
 }
 
+//for event
 public struct SwapEvent has copy, drop {
     sender_address: address,
     from_token: std::ascii::String,
@@ -96,7 +91,7 @@ public fun compare_token_name(a: std::ascii::String, b: std::ascii::String): boo
     result 
 }
 
-public fun create_pool_name<X, Y>() : String { 
+public entry fun create_pool_name<X, Y>() : String { 
     let mut name = string::utf8(b"");
     string::append_utf8(&mut name, into_bytes(into_string(get<X>())));
     string::append_utf8(&mut name, b"_");
@@ -112,7 +107,6 @@ public entry fun add_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator
 
 fun create_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx: &mut TxContext) {
     let pool_name = create_pool_name<X, Y>();
-    // assert!(!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
     if (!bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name)) {
         let pool = Pool<X, Y> {
             id: object::new(ctx),
@@ -133,9 +127,6 @@ public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
 
 public entry fun swap_token<X,Y>(global: &mut Global, amount: Coin<X>, ctx: &mut TxContext) {
     let from_token_amount = coin::value(&amount);
-
-    // check amount > 0
-    assert!(from_token_amount > 0, ERROR_NOT_POSITIVE_AMOUNT);
     let fee = global.fee;
 
     //calculate amount of toToken received
@@ -176,6 +167,10 @@ public entry fun reset_rate_pool<X,Y>(_admin: &AdminCap, global: &mut Global, nu
     let pool = get_pool<X, Y>(global);
     pool.numerator_of_rate = numerator;
     pool.denominator_of_rate = denominator;
+
+    let pool = get_pool<Y, X>(global);
+    pool.numerator_of_rate = denominator;
+    pool.denominator_of_rate = numerator;
 }
 
 public entry fun set_fee(_admin: &AdminCap, global: &mut Global, fee: u64) {
