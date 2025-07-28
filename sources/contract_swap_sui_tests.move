@@ -14,12 +14,9 @@ module contract_swap_sui::swap_token_test{
     use sui::package;
     use sui::balance;
 
-
     const ERROR_NOT_EQUAL_BALANCE_IN_POOL: u64 = 999;
     const ERROR_NOT_EQUAL_FEE_IN_POOL: u64 = 888;
     const ERROR_NOT_EQUAL_RATE_IN_POOL: u64 = 777;
-    const ERROR_POOL_NOT_EXIST: u64 = 666;
-    //NEED TO TEST CASE BAD
 
     // case1: success : swap 1000 prg -> 1980 crg with rate 1:2 and fee = 1%
     #[test]
@@ -107,7 +104,7 @@ module contract_swap_sui::swap_token_test{
             swap_token::join_to_token<X, Y>(pool, balance_y_to_pool);
         };
         
-        // get crg coin to deposit swap contract 
+        // get x coin to deposit swap contract 
         let coin_x_to_swap = coin::split(&mut coin_x, amount, test_scenario::ctx(scenario));
 
         test_scenario::next_tx(scenario, owner);

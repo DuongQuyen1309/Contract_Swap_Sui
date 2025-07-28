@@ -10,7 +10,7 @@ module contract_swap_sui::swap_token;
 use sui::coin::{Self, Coin};
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
-use std::string::{Self, String};
+use  std::ascii::{Self, String};
 use std::ascii::into_bytes;
 use std::type_name::{get, into_string};
 use sui::event;
@@ -39,8 +39,8 @@ public struct Pool<phantom X, phantom Y> has key, store {
 //for event
 public struct SwapEvent has copy, drop {
     sender_address: address,
-    from_token: std::ascii::String,
-    to_token: std::ascii::String,
+    from_token: String,
+    to_token: String,
     amount_from: u64,
     amount_to: u64,
 }
@@ -61,41 +61,11 @@ fun init(ctx: &mut TxContext) {
     transfer::transfer(admin, tx_context::sender(ctx));
 }
 
-public fun compare_token_name(a: std::ascii::String, b: std::ascii::String): bool {
-    let a_bytes = into_bytes(a);
-    let b_bytes = into_bytes(b);
-    let a_len = vector::length(&a_bytes);
-    let b_len = vector::length(&b_bytes);
-    let mut min_len = 0;
-    if (a_len < b_len) { min_len = a_len };
-    if (a_len >= b_len) { min_len = b_len };
-
-    let mut i = 0;
-    let mut result = false;
-    while (i < min_len) {
-        let a_byte = *vector::borrow(&a_bytes, i);
-        let b_byte = *vector::borrow(&b_bytes, i);
-        if (a_byte < b_byte) {
-            result = true;
-            break
-        };
-        if (a_byte > b_byte) {
-            result = false;
-            break
-        };
-        i = i + 1;
-    };
-    if (i == min_len) {
-        result = a_len < b_len;
-    };
-    result 
-}
-
 public entry fun create_pool_name<X, Y>() : String { 
-    let mut name = string::utf8(b"");
-    string::append_utf8(&mut name, into_bytes(into_string(get<X>())));
-    string::append_utf8(&mut name, b"_");
-    string::append_utf8(&mut name, into_bytes(into_string(get<Y>())));
+    let mut name = ascii::string(b"");
+    ascii::append(&mut name, into_string(get<X>()));
+    ascii::append(&mut name, ascii::string(b"_"));
+    ascii::append(&mut name, into_string(get<Y>()));
     move(name)
 }
 
@@ -122,7 +92,7 @@ fun create_pool<X,Y>(global: &mut Global, numerator: u64, denominator: u64, ctx:
 public fun get_pool<X, Y>(global: &mut Global) : &mut Pool<X, Y> {
     let pool_name = create_pool_name<X, Y>();
     assert!(bag::contains_with_type<String, Pool<X,Y>>(&global.pools, pool_name), ERROR_POOL_NOT_EXIST);
-    bag::borrow_mut<String, Pool<X, Y>>(&mut global.pools, pool_name)
+    bag::borrow_mut<ascii::String, Pool<X, Y>>(&mut global.pools, pool_name)
 }
 
 public entry fun swap_token<X,Y>(global: &mut Global, amount: Coin<X>, ctx: &mut TxContext) {
@@ -162,7 +132,7 @@ fun handle_amount_to<X, Y>(global: &mut Global, amount: u64, ctx: &mut TxContext
 }
 
 public entry fun reset_rate_pool<X,Y>(_admin: &AdminCap, global: &mut Global, numerator: u64, denominator: u64) {
-    // check numerator and denominator are positive
+    // check numerator and denominator is not equal to 0
     assert!(numerator > 0 && denominator > 0, ERROR_NOT_POSITIVE_AMOUNT);
     let pool = get_pool<X, Y>(global);
     pool.numerator_of_rate = numerator;
@@ -174,7 +144,7 @@ public entry fun reset_rate_pool<X,Y>(_admin: &AdminCap, global: &mut Global, nu
 }
 
 public entry fun set_fee(_admin: &AdminCap, global: &mut Global, fee: u64) {
-    // check fee is positive
+    // check fee is not over 1000
     assert!(fee > 0 && fee < 1000, ERROR_NOT_SUITABLE_FEE);
     global.fee = fee;
 }
