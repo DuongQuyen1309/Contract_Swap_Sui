@@ -112,7 +112,7 @@ public entry fun swap_token_y_to_x<X,Y>(amount: Coin<Y>, pool: &mut Pool<X, Y>, 
     });
 }
 
-fun withdraw<X,Y>(_admin: &AdminCap, pool: &mut Pool<X, Y>, amount_from: u64, amount_to: u64, ctx: &mut TxContext) {
+public entry fun withdraw<X,Y>(_admin: &AdminCap, pool: &mut Pool<X, Y>, amount_from: u64, amount_to: u64, ctx: &mut TxContext) {
     assert!(balance::value(&pool.from_token) >= amount_from, ERROR_NOT_ENOUGH_BALANCE);
     assert!(balance::value(&pool.to_token) >= amount_to, ERROR_NOT_ENOUGH_BALANCE);
 
