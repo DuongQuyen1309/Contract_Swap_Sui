@@ -74,10 +74,10 @@ public entry fun swap_token_x_to_y<X,Y>(amount: Coin<X>, pool: &mut Pool<X, Y>, 
     assert!(balance::value(&pool.to_token) >= amount_to, ERROR_NOT_ENOUGH_BALANCE);
 
     //handle amount of fromToken 
-    handle_amount_from_direct<X, Y>(pool, amount);
+    handle_amount_from_x_to_y<X, Y>(pool, amount);
 
     //handle amount of toToken
-    handle_amount_to_direct<X, Y>(pool, amount_to, ctx); 
+    handle_amount_to_x_to_y<X, Y>(pool, amount_to, ctx); 
 
     event::emit(SwapEvent {
         sender_address: tx_context::sender(ctx),
@@ -98,10 +98,10 @@ public entry fun swap_token_y_to_x<X,Y>(amount: Coin<Y>, pool: &mut Pool<X, Y>, 
     assert!(balance::value(&pool.from_token) >= amount_to, ERROR_NOT_ENOUGH_BALANCE);
 
     //handle amount of fromToken 
-    handle_amount_from_indirect<X, Y>(pool, amount);
+    handle_amount_from_y_to_x<X, Y>(pool, amount);
 
     //handle amount of toToken
-    handle_amount_to_indirect<X, Y>(pool, amount_to, ctx); 
+    handle_amount_to_y_to_x<X, Y>(pool, amount_to, ctx); 
 
     event::emit(SwapEvent {
         sender_address: tx_context::sender(ctx),
@@ -122,22 +122,40 @@ public entry fun withdraw<X,Y>(_admin: &AdminCap, pool: &mut Pool<X, Y>, amount_
     transfer::public_transfer(amount_to_coin, tx_context::sender(ctx)); 
 }
 
-fun handle_amount_from_direct<X, Y>(pool: &mut Pool<X, Y>, from_token: Coin<X>) {
+public entry fun deposit<X,Y>(_admin: &AdminCap, pool: &mut Pool<X, Y>, mut coin_of_from_token: Coin<X>, mut coin_of_to_token: Coin<Y>, amount_from: u64, amount_to: u64, ctx: &mut TxContext) {
+    let from_token_value_of_pool = coin::value(&coin_of_from_token);
+    let to_token_value_of_pool = coin::value(&coin_of_to_token);
+    assert!(from_token_value_of_pool >= amount_from, ERROR_NOT_ENOUGH_BALANCE);
+    assert!(to_token_value_of_pool >= amount_to, ERROR_NOT_ENOUGH_BALANCE);
+
+    let coin_from_token = coin::split(&mut coin_of_from_token, amount_from, ctx);
+    let coin_to_token = coin::split(&mut coin_of_to_token, amount_to, ctx);
+    
+    let balance_from_token = coin::into_balance(coin_from_token);
+    let balance_to_token = coin::into_balance(coin_to_token);
+    balance::join(&mut pool.from_token, balance_from_token);
+    balance::join(&mut pool.to_token, balance_to_token);
+
+    transfer::public_transfer(coin_of_from_token, tx_context::sender(ctx));
+    transfer::public_transfer(coin_of_to_token, tx_context::sender(ctx));
+}
+
+fun handle_amount_from_x_to_y<X, Y>(pool: &mut Pool<X, Y>, from_token: Coin<X>) {
     let from_token_balance = coin::into_balance(from_token);
     balance::join(&mut pool.from_token, from_token_balance);
 }
 
-fun handle_amount_to_direct<X, Y>(pool: &mut Pool<X, Y>, amount: u64, ctx: &mut TxContext) {
+fun handle_amount_to_x_to_y<X, Y>(pool: &mut Pool<X, Y>, amount: u64, ctx: &mut TxContext) {
     let amount_to_Coin = coin::take<Y>(&mut pool.to_token, amount, ctx);
     transfer::public_transfer(amount_to_Coin, tx_context::sender(ctx)); 
 }
 
-fun handle_amount_from_indirect<X, Y>(pool: &mut Pool<X, Y>, from_token: Coin<Y>) {
+fun handle_amount_from_y_to_x<X, Y>(pool: &mut Pool<X, Y>, from_token: Coin<Y>) {
     let from_token_balance = coin::into_balance(from_token);
     balance::join(&mut pool.to_token, from_token_balance);
 }
 
-fun handle_amount_to_indirect<X, Y>(pool: &mut Pool<X, Y>, amount: u64, ctx: &mut TxContext) {
+fun handle_amount_to_y_to_x<X, Y>(pool: &mut Pool<X, Y>, amount: u64, ctx: &mut TxContext) {
     let amount_to_Coin = coin::take<X>(&mut pool.from_token, amount, ctx);
     transfer::public_transfer(amount_to_Coin, tx_context::sender(ctx)); 
 }
