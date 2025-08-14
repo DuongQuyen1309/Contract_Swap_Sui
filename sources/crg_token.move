@@ -25,7 +25,7 @@ fun init(witness: CRG, ctx: &mut TxContext) {
     transfer::public_transfer(treasury, tx_context::sender(ctx));
 }
 
-public fun mint(_admin: &AdminCap, treasury: &mut TreasuryCap<CRG>, amount: u64, recipient: address, ctx: &mut TxContext) {
+public entry fun mint(_admin: &AdminCap, treasury: &mut TreasuryCap<CRG>, amount: u64, recipient: address, ctx: &mut TxContext) {
     let coin = coin::mint(treasury, amount, ctx);
     transfer::public_transfer(coin, recipient);
 }

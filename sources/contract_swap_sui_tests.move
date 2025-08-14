@@ -59,21 +59,33 @@ module contract_swap_sui::swap_token_test{
         set_up_create_pool<CRG, PRG>(3, 4, 10, 3, 4, 10);
     }
 
-    //case 7: fail : amount that swap is over balance of pools
+    //case 7: success : withdraw 1000 crg and 500 prg from pool(PRG, CRG)
+    #[test]
+    fun test_withdraw(){
+        set_up_withdraw<CRG, PRG>(1000, 500, 49000, 49500);
+    }
+
+    //case 8: success : deposit 50000 crg and 50000 prg in pool
+    #[test]
+    fun test_deposit(){
+        set_up_deposit<CRG, PRG>(50000, 50000, 50000, 50000);
+    }
+
+    //case 9: fail : amount that swap is over balance of pools
     #[test]
     #[expected_failure]
     fun test_swap_over_amount(){
         set_up_test_swap<PRG, CRG>(1, 2,10,  50000, 51000, 48020, true);
     }
 
-    //case 8: fail : rate = 0 
+    //case 10: fail : rate = 0 
     #[test]
     #[expected_failure]
     fun test_set_rate_equal_0(){
         set_up_reset_rate<CRG, PRG>(0, 5, 0, 5);
     }
 
-    //case 9: fail : fee > 1000 
+    //case 11: fail : fee > 1000 
     #[test]
     #[expected_failure]
     fun test_set_fee_over_1000(){
@@ -204,6 +216,72 @@ module contract_swap_sui::swap_token_test{
         test_scenario::end(scenario);
     }
 
+    #[test_only]
+    fun set_up_withdraw<X,Y>(amount_from: u64, amount_to: u64, expected_from_balance_of_pool: u64, expected_to_balance_of_pool: u64) {
+        let (owner, mut scenario) = set_up_scenario();
+        intialize_contract_swap_contract_token(&mut scenario, owner);
+        min_token(1000000, 1000000,&mut scenario, owner);
+        let admin : SwapAdmin = set_up_admin_treasury_pool<X,Y>(1, 3, 10,&mut scenario, owner);
+
+        test_scenario::next_tx(&mut scenario, owner);
+        let mut coin_x = test_scenario::take_from_sender<coin::Coin<X>>(&mut scenario); 
+        let mut coin_y = test_scenario::take_from_sender<coin::Coin<Y>>(&mut scenario);        
+
+        //get coin to transfer to pool
+        let coin_x_to_pool = coin::split(&mut coin_x, 50000, test_scenario::ctx(&mut scenario));
+        let coin_y_to_pool = coin::split(&mut coin_y, 50000, test_scenario::ctx(&mut scenario));
+
+        //transform from coin -> balance
+        let balance_x_to_pool = coin::into_balance(coin_x_to_pool);
+        let balance_y_to_pool = coin::into_balance(coin_y_to_pool);
+        //get pool to deposit into pool
+        let mut pool = test_scenario::take_shared<Pool<X,Y>>(&mut scenario);
+
+        //deposit into pool
+        swap_token::join_from_token<X, Y>(&mut pool, balance_x_to_pool); 
+        swap_token::join_to_token<X, Y>(&mut pool, balance_y_to_pool);
+
+        test_scenario::next_tx(&mut scenario, owner);
+        swap_token::withdraw<X,Y>(&admin, &mut pool, amount_from, amount_to, test_scenario::ctx(&mut scenario));
+        let x_balance = swap_token::get_from_token<X, Y>(&mut pool);
+        let y_balance = swap_token::get_to_token<X, Y>(&mut pool);
+        assert!(x_balance == expected_from_balance_of_pool,ERROR_NOT_EQUAL_BALANCE_IN_POOL);
+        assert!(y_balance == expected_to_balance_of_pool,ERROR_NOT_EQUAL_BALANCE_IN_POOL);
+        test_scenario::next_tx(&mut scenario, owner);
+        transfer::public_transfer(admin, owner);
+        transfer::public_transfer(coin_x, tx_context::sender(test_scenario::ctx(&mut scenario)));
+        transfer::public_transfer(coin_y, tx_context::sender(test_scenario::ctx(&mut scenario)));
+        test_scenario::return_shared(pool);
+        test_scenario::end(scenario);
+    }
+
+    #[test_only]
+    fun set_up_deposit<X,Y>(amount_from: u64, amount_to: u64, expected_from_balance_of_pool: u64, expected_to_balance_of_pool: u64) {
+        let (owner, mut scenario) = set_up_scenario();
+        intialize_contract_swap_contract_token(&mut scenario, owner);
+        min_token(1000000, 1000000,&mut scenario, owner);
+        let admin : SwapAdmin = set_up_admin_treasury_pool<X,Y>(1, 3, 10,&mut scenario, owner);
+        
+        test_scenario::next_tx(&mut scenario, owner);
+        let mut pool = test_scenario::take_shared<Pool<X,Y>>(&mut scenario);
+
+        test_scenario::next_tx(&mut scenario, owner);
+        let mut coin_x = test_scenario::take_from_sender<coin::Coin<X>>(&mut scenario); 
+        let mut coin_y = test_scenario::take_from_sender<coin::Coin<Y>>(&mut scenario);        
+
+        test_scenario::next_tx(&mut scenario, owner);
+        swap_token::deposit<X,Y>(&admin, &mut pool, coin_x, coin_y, amount_from, amount_to, test_scenario::ctx(&mut scenario));
+        let x_balance = swap_token::get_from_token<X, Y>(&mut pool);
+        let y_balance = swap_token::get_to_token<X, Y>(&mut pool);
+        assert!(x_balance == expected_from_balance_of_pool,ERROR_NOT_EQUAL_BALANCE_IN_POOL);
+        assert!(y_balance == expected_to_balance_of_pool,ERROR_NOT_EQUAL_BALANCE_IN_POOL);
+        test_scenario::next_tx(&mut scenario, owner);
+        transfer::public_transfer(admin, owner);
+        // transfer::public_transfer(coin_x, tx_context::sender(test_scenario::ctx(&mut scenario)));
+        // transfer::public_transfer(coin_y, tx_context::sender(test_scenario::ctx(&mut scenario)));
+        test_scenario::return_shared(pool);
+        test_scenario::end(scenario);
+    }
 
     #[test_only]
     fun intialize_contract_swap_contract_token(scenario: &mut test_scenario::Scenario, owner: address){
