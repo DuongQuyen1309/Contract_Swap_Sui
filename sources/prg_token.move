@@ -23,12 +23,10 @@ fun init(witness: PRG, ctx: &mut TxContext) {
         ctx,
     );
     transfer::public_freeze_object(metadata);
-    let coin = coin::mint(&mut treasury, 1000000, ctx);
-    transfer::public_transfer(coin, tx_context::sender(ctx));
     transfer::public_transfer(treasury, tx_context::sender(ctx));
 }
 
-public fun mint(treasury: &mut TreasuryCap<PRG>, amount: u64, recipient: address, ctx: &mut TxContext) {
+public fun mint(_admin: &AdminCap, treasury: &mut TreasuryCap<PRG>, amount: u64, recipient: address, ctx: &mut TxContext) {
     let coin = coin::mint(treasury, amount, ctx);
     transfer::public_transfer(coin, recipient);
 }
